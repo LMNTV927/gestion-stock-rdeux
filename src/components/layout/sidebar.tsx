@@ -1,0 +1,1 @@
+// Ce composant n'est plus utilisé. Voir Topbar à la place. 
