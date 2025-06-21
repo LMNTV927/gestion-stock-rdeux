@@ -489,7 +489,7 @@ function ModalValidationIA({ open, setOpen, products, setProducts, scanType, onV
 
         const numericFields: (keyof ScannedProduct)[] = ['quantity', 'unitPrice', 'quantitySold', 'salePrice'];
 
-        const anyProductToUpdate = productToUpdate as any;
+        const anyProductToUpdate = productToUpdate as Record<string, any>;
         if (numericFields.includes(field)) {
             anyProductToUpdate[field] = Number(value) || 0;
         } else {
