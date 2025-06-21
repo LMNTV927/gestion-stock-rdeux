@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { file } = await parseForm(req);
     // Lecture du buffer du PDF
-    const pdfBuffer = fs.readFileSync(file.filepath);
+    // const pdfBuffer = fs.readFileSync(file.filepath); // Gardé pour future utilisation avec l'API OpenAI
     // TODO: Appel réel à OpenAI ici (GPT-4 Vision ou Doc AI)
     // Pour l'instant, mock de parsing :
     await new Promise(r => setTimeout(r, 2000));
@@ -38,7 +38,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         { name: 'Coca-Cola', quantity: 72, category: 'Boissons', unitPrice: 0.8, unit: 'pcs' },
       ]
     });
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message || 'Erreur serveur' });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Erreur serveur';
+    return res.status(500).json({ error: message });
   }
 } 

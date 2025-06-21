@@ -16,12 +16,12 @@ import {
   ReceiptText,
 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
-import { FileUpload } from "@/components/upload/file-upload"
 import { useRef, useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { motion, AnimatePresence } from "framer-motion"
 import type { ProductPrisma } from '@/types'
+import Image from "next/image"
 
 // Données de démonstration
 const mockStats = {
@@ -47,6 +47,7 @@ const mockTopProducts = [
   { name: "Chips Lays", sales: 850, stock: 28 },
   { name: "Pain au Chocolat", sales: 720, stock: 15 },
   { name: "Café Expresso", sales: 680, stock: 22 },
+  { name: "Sofia Davis", email: "sofia.davis@email.com", amount: 39, avatar: "S" },
 ]
 
 const mockRecentSales = [
@@ -65,6 +66,7 @@ interface ScannedProduct {
   category?: string;
   quantitySold?: number;
   salePrice?: number;
+  unit?: string;
 }
 interface ScanResult {
   success: true;
@@ -251,68 +253,98 @@ export default function DashboardPage() {
     }
   };
 
-  // Fonction d'application à l'inventaire
-  const applyToInventory = (products: any[], type: 'delivery' | 'receipt') => {
-    setInventory(prevInventory => {
-      let newInventory = [...prevInventory];
-      products.forEach((product: any) => {
-        const name = product.name;
-        const category = product.category || 'épicerie';
-        const existingIndex = newInventory.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
-        if (type === 'delivery') {
-          if (existingIndex >= 0) {
-            newInventory[existingIndex].quantity += product.quantity;
-            newInventory[existingIndex].unitPrice = product.unitPrice || newInventory[existingIndex].unitPrice;
-          } else {
-            newInventory.push({
-              id: String(Date.now() + Math.random()),
-              name: product.name,
-              quantity: product.quantity,
-              unitPrice: product.unitPrice,
-              category: product.category,
-              categoryColor: getCategoryColor(product.category),
-              min: 5,
-              unit: 'kg',
-              supplier: '',
-              lastUpdate: new Date().toLocaleDateString(),
-              status: 'Stock OK',
-              statusColor: 'bg-green-50 text-green-700',
-              image: '',
-            });
-          }
+  const handleIaValidate = async (products: ScannedProduct[], type: 'delivery' | 'receipt') => {
+    const productsToUpsert: Partial<ProductPrisma>[] = [];
+
+    if (type === 'delivery') {
+      products.forEach((prod) => {
+        const { name, quantity, category, unitPrice, unit } = prod;
+        const existingProduct = inventory.find(item => item.name.toLowerCase() === name?.toLowerCase());
+        
+        if (existingProduct) {
+          productsToUpsert.push({
+            id: existingProduct.id,
+            quantity: (existingProduct.quantity || 0) + (quantity || 0),
+          });
         } else {
-          if (existingIndex >= 0) {
-            newInventory[existingIndex].quantity = Math.max(0, newInventory[existingIndex].quantity - (product.quantitySold || 0));
-          }
+          productsToUpsert.push({
+            name: name || "Nouveau Produit",
+            quantity: quantity || 0,
+            unitPrice: unitPrice || 0,
+            category: category || "Non classé",
+            min: 10,
+            unit: unit || 'pcs',
+            status: "Stock OK",
+            statusColor: "bg-green-50 text-green-700",
+            image: '/file.svg',
+          });
         }
       });
-      return newInventory;
+    } else { // receipt
+      products.forEach(prod => {
+        const { name, quantitySold } = prod;
+        const existingProduct = inventory.find(item => item.name.toLowerCase() === name?.toLowerCase());
+        if (existingProduct) {
+          productsToUpsert.push({
+            id: existingProduct.id,
+            quantity: Math.max(0, (existingProduct.quantity || 0) - (quantitySold || 0)),
+          });
+        }
+      });
+    }
+
+    if (productsToUpsert.length > 0) {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: productsToUpsert }),
+      });
+    }
+
+    const data = await fetch('/api/products').then(res => res.json());
+    setInventory(data);
+    setIaModalOpen(false);
+  };
+
+  const analyzePDFWithOpenAI = async (file: File): Promise<ScannedProduct[]> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/analyze-pdf', {
+      method: 'POST',
+      body: formData,
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Erreur de l'API:", errorText);
+      throw new Error(`Erreur de l'API: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (!data.products) {
+      throw new Error("La réponse de l'API ne contient pas de produits.");
+    }
+    return data.products;
   };
 
-  // Fonction d'appel à l'API OpenAI (mock pour l'instant)
-  const analyzePDFWithOpenAI = async (file: File, type: 'delivery' | 'receipt'): Promise<ScannedProduct[]> => {
-    // TODO: remplacer par appel réel à l'API OpenAI
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    return [
-      { name: 'Filet de poulet', quantity: 3, category: 'Viandes & Poissons', unitPrice: 12.5 },
-      { name: 'Tomates fraîches', quantity: 10, category: 'Fruits & Légumes', unitPrice: 2.1 },
-      { name: 'Mozzarella di Bufala', quantity: 12, category: 'Produits Laitiers', unitPrice: 1.8 },
-      { name: 'Riz basmati', quantity: 4, category: 'Pâtes & Céréales', unitPrice: 1.2 },
-      { name: 'Coca-Cola', quantity: 72, category: 'Boissons', unitPrice: 0.8 },
-    ];
-  };
-
-  // Handler d'upload PDF (nouveau workflow)
   const handleFileUploadIA = async (file: File, scanType: 'delivery' | 'receipt') => {
-    setIsAnalyzing(true);
-    setIaScanType(scanType);
+    if (!file) {
+      alert("Veuillez sélectionner un fichier.");
+      return;
+    }
     try {
-      const products = await analyzePDFWithOpenAI(file, scanType);
+      setIsAnalyzing(true);
+      setIaScanType(scanType);
+      const products = await analyzePDFWithOpenAI(file);
       setIaProducts(products);
       setIaModalOpen(true);
     } catch (e) {
-      alert("Erreur lors de l'analyse IA");
+      console.error(e);
+      if (e instanceof Error) {
+        alert(e.message);
+      } else {
+        alert("Une erreur inconnue est survenue lors de l'analyse.");
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -743,7 +775,7 @@ export default function DashboardPage() {
         setValidationModalOpen={setValidationModalOpen}
         setScanResults={setScanResults}
         scanType={scanType}
-        applyToInventory={applyToInventory}
+        applyToInventory={handleIaValidate}
       />
       <ModalValidationIA
         open={iaModalOpen}
@@ -751,24 +783,8 @@ export default function DashboardPage() {
         products={iaProducts}
         setProducts={setIaProducts}
         scanType={iaScanType}
-        onValidate={async (validatedProducts) => {
-          for (const prod of validatedProducts) {
-            await fetch('/api/products', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(prod)
-            });
-          }
-          // Recharge l'inventaire après ajout
-          const data = await fetch('/api/products').then(res => res.json());
-          setInventory(data);
-          setIaModalOpen(false);
-          setBonCmdFile(null);
-          setTicketFile(null);
-          if (bonCmdInputRef.current) bonCmdInputRef.current.value = '';
-          if (ticketInputRef.current) ticketInputRef.current.value = '';
-          alert('Stock mis à jour avec succès !');
-        }}
+        onValidate={handleIaValidate}
+        inventory={inventory}
       />
     </MainLayout>
   )
@@ -781,7 +797,7 @@ interface ValidationModalProps {
   setValidationModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setScanResults: React.Dispatch<React.SetStateAction<ScanResult | null>>;
   scanType: 'delivery' | 'receipt';
-  applyToInventory: (products: any[], type: 'delivery' | 'receipt') => void;
+  applyToInventory: (products: ScannedProduct[], type: 'delivery' | 'receipt') => void;
 }
 function ValidationModal({ validationModalOpen, scanResults, setValidationModalOpen, setScanResults, scanType, applyToInventory }: ValidationModalProps) {
   if (!validationModalOpen || !scanResults) return null;
@@ -858,136 +874,144 @@ interface ModalValidationIAProps {
   products: ScannedProduct[];
   setProducts: React.Dispatch<React.SetStateAction<ScannedProduct[]>>;
   scanType: 'delivery' | 'receipt';
-  onValidate: (products: ScannedProduct[]) => void;
+  onValidate: (products: ScannedProduct[], scanType: 'delivery' | 'receipt') => void;
+  inventory: ProductPrisma[];
 }
-function ModalValidationIA({ open, setOpen, products, setProducts, scanType, onValidate }: ModalValidationIAProps) {
-  if (!open) return null;
-  // Liste des catégories pour le select
-  const categories = [
-    'Viandes & Poissons',
-    'Fruits & Légumes',
-    'Produits Laitiers',
-    'Pâtes & Céréales',
-    'Boissons',
-    'Épicerie',
-  ];
-  // Liste des statuts pour le badge (mock)
-  const getStatus = (prod: ScannedProduct) => {
-    if (prod.name?.toLowerCase().includes('coca')) return { label: 'Moyenne', color: 'bg-yellow-100 text-yellow-800' };
-    return { label: 'Élevée', color: 'bg-green-100 text-green-700' };
+function ModalValidationIA({ open, setOpen, products, setProducts, scanType, onValidate, inventory }: ModalValidationIAProps) {
+  const handleProductChange = (index: number, field: keyof ScannedProduct, value: string | number) => {
+    const updatedProducts = [...products];
+    const productToUpdate = { ...updatedProducts[index] };
+    
+    const numericFields: (keyof ScannedProduct)[] = ['quantity', 'unitPrice', 'quantitySold', 'salePrice'];
+
+    if (numericFields.includes(field)) {
+        (productToUpdate as any)[field] = Number(value) || 0;
+    } else {
+        (productToUpdate as any)[field] = String(value);
+    }
+    
+    updatedProducts[index] = productToUpdate;
+    setProducts(updatedProducts);
   };
+
+  const handleValidate = () => {
+    onValidate(products, scanType);
+    setOpen(false);
+  }
+
+  const getStatus = (prod: ScannedProduct) => {
+    return inventory.find(i => i.name.toLowerCase() === prod.name.toLowerCase()) 
+      ? <Badge variant="outline" className="text-green-600 border-green-200">✅ En stock</Badge> 
+      : <Badge variant="outline" className="text-blue-600 border-blue-200">🆕 Nouveau</Badge>
+  }
+
   const handleClose = () => {
     setOpen(false);
-    setBonCmdFile && setBonCmdFile(null);
-    setTicketFile && setTicketFile(null);
-    if (typeof window !== 'undefined') {
-      if (window.bonCmdInputRef && window.bonCmdInputRef.current) window.bonCmdInputRef.current.value = '';
-      if (window.ticketInputRef && window.ticketInputRef.current) window.ticketInputRef.current.value = '';
-    }
-  };
+  }
+
+  if (!open) return null;
+
   return (
     <AnimatePresence>
-      <motion.div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
+      {open && (
         <motion.div
-          className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl relative"
-          initial={{ y: 40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 40, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
         >
-          <h2 className="text-xl font-bold mb-4 text-black flex items-center gap-2">
-            <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2l4-4" /></svg>
-            Produits détectés par IA <span className="text-gray-500">({products.length})</span>
-            <span className="ml-auto bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded capitalize">{scanType}</span>
-          </h2>
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-            {products.map((prod, idx) => (
-              <motion.div
-                key={idx}
-                className="bg-gray-50 rounded-lg p-4 flex flex-col gap-1 relative"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                layout
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <input
-                    className="font-semibold text-lg text-gray-900 bg-transparent border-b border-dashed border-gray-300 focus:border-blue-500 outline-none flex-1 min-w-0"
-                    value={prod.name}
-                    onChange={e => setProducts(p => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
-                  />
-                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded">Nouveau produit</span>
-                  <span className={`text-xs px-2 py-0.5 rounded ${getStatus(prod).color}`}>{getStatus(prod).label}</span>
-                  <button className="ml-2 text-red-500 hover:text-red-700" onClick={() => setProducts(p => p.filter((_, i) => i !== idx))}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-4 items-center text-sm mb-1">
-                  <div>
-                    Quantité :
-                    <input
-                      type="number"
-                      className="ml-1 w-16 px-1 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
-                      value={prod.quantity ?? ''}
-                      min={0}
-                      onChange={e => setProducts(p => p.map((x, i) => i === idx ? { ...x, quantity: Number(e.target.value) } : x))}
-                    />
-                    <input
-                      type="text"
-                      className="ml-1 w-10 px-1 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
-                      value={prod.unit ?? 'pcs'}
-                      onChange={e => setProducts(p => p.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))}
-                    />
-                  </div>
-                  <div>
-                    Catégorie :
-                    <select
-                      className="ml-1 px-2 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
-                      value={prod.category ?? ''}
-                      onChange={e => setProducts(p => p.map((x, i) => i === idx ? { ...x, category: e.target.value } : x))}
-                    >
-                      <option value="">Choisir</option>
-                      {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    Prix unitaire :
-                    <input
-                      type="number"
-                      className="ml-1 w-16 px-1 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
-                      value={prod.unitPrice ?? ''}
-                      min={0}
-                      step={0.01}
-                      onChange={e => setProducts(p => p.map((x, i) => i === idx ? { ...x, unitPrice: Number(e.target.value) } : x))}
-                    /> €
-                  </div>
-                </div>
-                <div className="text-xs text-gray-500 flex items-center gap-2">
-                  <span>📁 Sera classé dans : <span className="font-medium">{prod.category || 'Non défini'}</span></span>
-                  <span className="text-blue-500">Image appropriée sera assignée automatiquement</span>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-          <motion.button
-            className="w-full mt-6 py-3 rounded bg-yellow-700 text-white font-semibold text-lg flex items-center justify-center gap-2 hover:bg-yellow-800"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => onValidate(products)}
+          <motion.div
+            className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl relative"
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            Ajouter au Stock
-          </motion.button>
-          <button className="absolute top-3 right-3 text-gray-400 hover:text-gray-600" onClick={handleClose} title="Fermer">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+            <h2 className="text-xl font-bold mb-4 text-black flex items-center gap-2">
+              <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2l4-4" /></svg>
+              Produits détectés par IA <span className="text-gray-500">({products.length})</span>
+              <span className="ml-auto bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded capitalize">{scanType}</span>
+            </h2>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {products.map((prod, idx) => (
+                <motion.div
+                  key={idx}
+                  className="bg-gray-50 rounded-lg p-4 flex flex-col gap-1 relative"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  layout
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <input
+                      className="font-semibold text-lg text-gray-900 bg-transparent border-b border-dashed border-gray-300 focus:border-blue-500 outline-none flex-1 min-w-0"
+                      value={prod.name}
+                      onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
+                    />
+                    {getStatus(prod)}
+                  </div>
+                  <div className="flex flex-wrap gap-4 items-center text-sm mb-1">
+                    <div>
+                      Quantité :
+                      <input
+                        type="number"
+                        className="ml-1 w-16 px-1 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                        value={prod.quantity ?? ''}
+                        min={0}
+                        onChange={(e) => handleProductChange(idx, 'quantity', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        className="ml-1 w-10 px-1 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                        value={prod.unit ?? 'pcs'}
+                        onChange={(e) => handleProductChange(idx, 'unit', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      Catégorie :
+                      <select
+                        className="ml-1 px-2 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                        value={prod.category ?? ''}
+                        onChange={(e) => handleProductChange(idx, 'category', e.target.value)}
+                      >
+                        <option value="">Choisir</option>
+                        {['Viandes', 'Légumes', 'Condiments', 'Poissons'].map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      Prix unitaire :
+                      <input
+                        type="number"
+                        className="ml-1 w-16 px-1 py-0.5 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                        value={prod.unitPrice ?? ''}
+                        min={0}
+                        step={0.01}
+                        onChange={(e) => handleProductChange(idx, 'unitPrice', e.target.value)}
+                      /> €
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500 flex items-center gap-2">
+                    <span>📁 Sera classé dans : <span className="font-medium">{prod.category || 'Non défini'}</span></span>
+                    <span className="text-blue-500">Image appropriée sera assignée automatiquement</span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            <motion.button
+              className="w-full mt-6 py-3 rounded bg-yellow-700 text-white font-semibold text-lg flex items-center justify-center gap-2 hover:bg-yellow-800"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleValidate}
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Ajouter au Stock
+            </motion.button>
+            <button className="absolute top-3 right-3 text-gray-400 hover:text-gray-600" onClick={handleClose} title="Fermer">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
 }
