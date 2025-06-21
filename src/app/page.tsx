@@ -269,10 +269,10 @@ export default function DashboardPage() {
             <MainLayout>
                 <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <StatsCard title="Valeur totale du stock" value={formatCurrency(totalValue)} icon={<Euro className="h-4 w-4 text-muted-foreground" />} />
-                        <StatsCard title="Produits en stock" value={String(totalProducts)} icon={<Package className="h-4 w-4 text-muted-foreground" />} />
-                        <StatsCard title="Produits en stock faible" value={String(lowStockProducts)} icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />} />
-                        <StatsCard title="Moyenne des ventes" value="+573" description="+20.1% depuis le mois dernier" icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />} />
+                        <StatsCard title="Valeur totale du stock" value={formatCurrency(totalValue)} icon={Euro} />
+                        <StatsCard title="Produits en stock" value={String(totalProducts)} icon={Package} />
+                        <StatsCard title="Produits en stock faible" value={String(lowStockProducts)} icon={AlertTriangle} />
+                        <StatsCard title="Moyenne des ventes" value="+573" description="+20.1% depuis le mois dernier" icon={TrendingUp} />
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -484,19 +484,25 @@ interface ModalValidationIAProps {
 
 function ModalValidationIA({ open, setOpen, products, setProducts, scanType, onValidate, inventory }: ModalValidationIAProps) {
     const handleProductChange = (index: number, field: keyof ScannedProduct, value: string | number) => {
-        const updatedProducts = [...products];
-        const productToUpdate = { ...updatedProducts[index] };
+        const updatedProducts = products.map((product, i) => {
+            if (i !== index) {
+                return product;
+            }
 
-        const numericFields: (keyof ScannedProduct)[] = ['quantity', 'unitPrice', 'quantitySold', 'salePrice'];
-
-        const anyProductToUpdate = productToUpdate as Record<string, any>;
-        if (numericFields.includes(field)) {
-            anyProductToUpdate[field] = Number(value) || 0;
-        } else {
-            anyProductToUpdate[field] = String(value);
-        }
-
-        updatedProducts[index] = productToUpdate;
+            switch(field) {
+                case 'name':
+                case 'category':
+                case 'unit':
+                    return { ...product, [field]: String(value) };
+                case 'quantity':
+                case 'unitPrice':
+                case 'quantitySold':
+                case 'salePrice':
+                    return { ...product, [field]: Number(value) || 0 };
+                default:
+                    return product;
+            }
+        });
         setProducts(updatedProducts);
     };
 
