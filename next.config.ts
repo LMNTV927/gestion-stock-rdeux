@@ -1,9 +1,4 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
+const nextConfig = {}
 
-const nextConfig: NextConfig = {
-  experimental: {
-    appDir: true,
-  },
-};
-
-export default nextConfig;
+export default nextConfig

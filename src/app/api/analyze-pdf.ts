@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import formidable from 'formidable';
-import fs from 'fs';
+// import fs from 'fs';
 
 export const config = {
   api: {
@@ -23,7 +23,7 @@ function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
   try {
-    const { file } = await parseForm(req);
+    // const { file } = await parseForm(req);
     // Lecture du buffer du PDF
     // const pdfBuffer = fs.readFileSync(file.filepath); // Gardé pour future utilisation avec l'API OpenAI
     // TODO: Appel réel à OpenAI ici (GPT-4 Vision ou Doc AI)
