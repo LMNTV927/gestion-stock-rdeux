@@ -9,7 +9,7 @@ export const config = {
 };
 
 // Utilitaire pour parser le form-data
-function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
+/* function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
   return new Promise((resolve, reject) => {
     const form = new formidable.IncomingForm();
     form.parse(req, (err, fields, files) => {
@@ -18,7 +18,7 @@ function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
       resolve({ file: Array.isArray(files.file) ? files.file[0] : files.file });
     });
   });
-}
+} */
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
