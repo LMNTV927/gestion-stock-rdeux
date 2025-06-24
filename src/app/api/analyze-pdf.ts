@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-//import formidable from 'formidable';
-// import fs from 'fs';
+import formidable from 'formidable';
+import fs from 'fs';
 
 export const config = {
   api: {
@@ -9,7 +9,7 @@ export const config = {
 };
 
 // Utilitaire pour parser le form-data
-/* function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
+function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
   return new Promise((resolve, reject) => {
     const form = new formidable.IncomingForm();
     form.parse(req, (err, fields, files) => {
@@ -18,14 +18,14 @@ export const config = {
       resolve({ file: Array.isArray(files.file) ? files.file[0] : files.file });
     });
   });
-} */
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
   try {
-    // const { file } = await parseForm(req);
+    const { file } = await parseForm(req);
     // Lecture du buffer du PDF
-    // const pdfBuffer = fs.readFileSync(file.filepath); // Gardé pour future utilisation avec l'API OpenAI
+    const pdfBuffer = fs.readFileSync(file.filepath);
     // TODO: Appel réel à OpenAI ici (GPT-4 Vision ou Doc AI)
     // Pour l'instant, mock de parsing :
     await new Promise(r => setTimeout(r, 2000));
@@ -38,8 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         { name: 'Coca-Cola', quantity: 72, category: 'Boissons', unitPrice: 0.8, unit: 'pcs' },
       ]
     });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Erreur serveur';
-    return res.status(500).json({ error: message });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || 'Erreur serveur' });
   }
 } 
