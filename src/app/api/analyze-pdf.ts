@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import formidable from 'formidable';
-import fs from 'fs';
 
 export const config = {
   api: {
@@ -23,7 +22,6 @@ function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
   try {
-    const { file } = await parseForm(req);
     // TODO: Appel réel à OpenAI ici (GPT-4 Vision ou Doc AI)
     // Pour l'instant, mock de parsing :
     await new Promise(r => setTimeout(r, 2000));
