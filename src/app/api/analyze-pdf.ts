@@ -24,8 +24,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
   try {
     const { file } = await parseForm(req);
-    // Lecture du buffer du PDF
-    const pdfBuffer = fs.readFileSync(file.filepath);
     // TODO: Appel réel à OpenAI ici (GPT-4 Vision ou Doc AI)
     // Pour l'instant, mock de parsing :
     await new Promise(r => setTimeout(r, 2000));
@@ -38,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         { name: 'Coca-Cola', quantity: 72, category: 'Boissons', unitPrice: 0.8, unit: 'pcs' },
       ]
     });
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message || 'Erreur serveur' });
+  } catch (e: unknown) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Erreur serveur' });
   }
 } 
