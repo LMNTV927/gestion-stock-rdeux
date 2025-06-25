@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import formidable from 'formidable';
 
 export const config = {
   api: {
@@ -7,17 +6,6 @@ export const config = {
   },
 };
 
-// Utilitaire pour parser le form-data
-function parseForm(req: NextApiRequest): Promise<{ file: formidable.File }> {
-  return new Promise((resolve, reject) => {
-    const form = new formidable.IncomingForm();
-    form.parse(req, (err, fields, files) => {
-      if (err) return reject(err);
-      if (!files.file) return reject(new Error('Aucun fichier envoyé'));
-      resolve({ file: Array.isArray(files.file) ? files.file[0] : files.file });
-    });
-  });
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
